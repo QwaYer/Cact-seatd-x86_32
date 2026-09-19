@@ -13,7 +13,7 @@
  *
  * Запускается супервизором cgoct как /sbin/seatd.
  *
- * /etc/seatd.conf (все ключи необязательны):
+ * /etc/seatd.conf (все ключи необязательны; создаётся при первом запуске):
  *   file=/var/log/seatd.log
  *   console=0
  *   node=/dev/<имя>        — можно несколько раз; по умолчанию
@@ -32,6 +32,7 @@
 #include <uio.h>
 #include <poll.h>
 
+#define CONFIG_PATH "/etc/seatd.conf"
 #define SOCK_PATH   "/run/seatd.sock"
 #define LOG_DEFAULT "/var/log/seatd.log"
 #define MAX_NODES   8
@@ -46,9 +47,41 @@ static const char *default_nodes[] = { "/dev/tty", "/dev/keyboard",
 static char nodes[MAX_NODES][64];
 static int  nodes_n = 0;
 
+/* Конфиг по умолчанию: пишется при первом запуске, если файла ещё нет. */
+static const char default_config[] =
+    "# seatd config - auto-generated on first start.\n"
+    "#\n"
+    "# file    - журнал событий\n"
+    "# console - дублировать на /dev/console (0|1)\n"
+    "# node    - узел сидения /dev/<имя> (можно несколько);\n"
+    "#           по умолчанию tty, keyboard, mouse, fb0\n"
+    "\n"
+    "file=/var/log/seatd.log\n"
+    "console=0\n"
+    "\n"
+    "#node=/dev/tty\n"
+    "#node=/dev/keyboard\n"
+    "#node=/dev/mouse\n"
+    "#node=/dev/fb0\n";
+
+static void ensure_dir(const char *path) {
+    (void)mkdir(path, 0755);
+}
+
+static void config_write_default(void) {
+    int fd = open(CONFIG_PATH, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (fd < 0) return;
+    write(fd, default_config, sizeof(default_config) - 1);
+    close(fd);
+}
+
 static void config_load(void) {
-    FILE *f = fopen("/etc/seatd.conf", "r");
-    if (!f) return;
+    FILE *f = fopen(CONFIG_PATH, "r");
+    if (!f) {
+        config_write_default();
+        f = fopen(CONFIG_PATH, "r");
+        if (!f) return;
+    }
     char line[192];
     while (fgets(line, sizeof(line), f)) {
         char *p = line;
@@ -209,6 +242,8 @@ int main(int argc, char *argv[]) {
 
     printf("seatd: starting\n");
     config_load();
+    ensure_dir("/var/log");
+    ensure_dir("/run");
 
     if (nodes_n == 0) {
         int i;
