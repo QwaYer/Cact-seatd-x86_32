@@ -1,22 +1,22 @@
 /*
- * seatd — менеджер сидений (seat) CactOS.
+ * seatd — seat manager for CactOS.
  *
- * Роль в духе seatd/logind: держать у себя «виртуальный терминал» и раздавать
- * дескрипторы устройств сидения активной сессии через AF_UNIX + SCM_RIGHTS.
- * Здесь нет VT-переключений ядра, поэтому seatd обслуживает одно логическое
- * сидение seat0 и отдаёт по запросу "attach" доступные узлы:
+ * Role in the spirit of seatd/logind: keep a "virtual terminal" and hand out
+ * the seat device descriptors of the active session via AF_UNIX + SCM_RIGHTS.
+ * There are no kernel VT switches here, so seatd serves one logical
+ * seat seat0 and hands out the available nodes on an "attach" request:
  *   /dev/tty, /dev/keyboard, /dev/mouse, /dev/fb0
  *
- * Протокол /run/seatd.sock (одна строка на соединение):
+ * Protocol /run/seatd.sock (one line per connection):
  *   status   -> "ok seat0 nodes=N\n"
- *   attach   -> "ok seat0 attach nfds=N\n" + N переданных fd (SCM_RIGHTS)
+ *   attach   -> "ok seat0 attach nfds=N\n" + N passed fds (SCM_RIGHTS)
  *
- * Запускается супервизором cgoct как /sbin/seatd.
+ * Started by the cgoct supervisor as /sbin/seatd.
  *
- * /etc/seatd.conf (все ключи необязательны; создаётся при первом запуске):
+ * /etc/seatd.conf (all keys optional; created on first start):
  *   file=/var/log/seatd.log
  *   console=0
- *   node=/dev/<имя>        — можно несколько раз; по умолчанию
+ *   node=/dev/<name>       — can be repeated; by default
  *                            tty, keyboard, mouse, fb0
  */
 
@@ -47,14 +47,14 @@ static const char *default_nodes[] = { "/dev/tty", "/dev/keyboard",
 static char nodes[MAX_NODES][64];
 static int  nodes_n = 0;
 
-/* Конфиг по умолчанию: пишется при первом запуске, если файла ещё нет. */
+/* Default config: written on first start if the file does not exist yet. */
 static const char default_config[] =
     "# seatd config - auto-generated on first start.\n"
     "#\n"
-    "# file    - журнал событий\n"
-    "# console - дублировать на /dev/console (0|1)\n"
-    "# node    - узел сидения /dev/<имя> (можно несколько);\n"
-    "#           по умолчанию tty, keyboard, mouse, fb0\n"
+    "# file    - event log\n"
+    "# console - duplicate to /dev/console (0|1)\n"
+    "# node    - seat node /dev/<name> (can be repeated);\n"
+    "#           default tty, keyboard, mouse, fb0\n"
     "\n"
     "file=/var/log/seatd.log\n"
     "console=0\n"
@@ -127,7 +127,7 @@ static void log_event(const char *msg) {
     }
 }
 
-/* Открыть доступные узлы сидения. Возвращает число открытых. */
+/* Open the available seat nodes. Returns the number opened. */
 static int open_seat_nodes(int fds[MAX_NODES]) {
     int n = 0;
     int i;
@@ -141,7 +141,7 @@ static int open_seat_nodes(int fds[MAX_NODES]) {
     return n;
 }
 
-/* Передать клиенту fds устройств сидения (SCM_RIGHTS) вместе с текстом. */
+/* Pass the seat device fds to the client (SCM_RIGHTS) together with the text. */
 static int send_fds(int cl, const int fds[MAX_NODES], int nfds) {
     char payload[64];
     int  plen = snprintf(payload, sizeof(payload), "ok seat0 attach nfds=%d\n", nfds);
